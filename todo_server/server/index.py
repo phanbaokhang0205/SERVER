@@ -1,14 +1,16 @@
-from tkinter import scrolledtext, messagebox, ttk
+from tkinter import  messagebox, ttk
 import customtkinter as ctk
 from PIL import Image
 from call_api import *
-import time, threading, requests
+import time, threading, requests, psutil, socket
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 log_list = []
-base_url = 'http://172.16.0.15:5001'
+# base_url = 'http://172.16.0.15:5001'
+base_url = 'https://flask-webserver-e07c23893a36.herokuapp.com'
+
 
 def confirm_exit(app):
     response = messagebox.askyesno(
@@ -62,12 +64,11 @@ class HeaderFrame(ctk.CTkFrame):
         # Shut down Button
         self.shutdown = self.shut_btn(master)
         self.shutdown.pack(side=ctk.RIGHT)
-        
+
         # refresh button
         # self.refresh = self.refresh_btn()
         # self.refresh.pack(side=ctk.RIGHT)
-        
-        
+
     def logo_title(self):
         frame = ctk.CTkFrame(self, fg_color="transparent")
         image = ctk.CTkImage(Image.open(
@@ -79,17 +80,6 @@ class HeaderFrame(ctk.CTkFrame):
         title.pack(side=ctk.LEFT, padx=5)
         return frame
 
-    # def refresh_btn(self):
-    #     frame = ctk.CTkFrame(self, fg_color='transparent')
-    #     image = ctk.CTkImage(Image.open(
-    #         "server/icons/refresh.png"), size=(50, 50))
-    #     button = ctk.CTkButton(frame, image=image, text="", command=self.refresh_data,
-    #                            fg_color="transparent")
-    #     label = ctk.CTkLabel(frame, text="Refresh",
-    #                          font=("Arial", 18), text_color='black')
-    #     button.pack(padx=0, pady=0)
-    #     label.pack(padx=0, pady=0)
-    #     return frame
 
     def shut_btn(self, app):
         frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -102,31 +92,6 @@ class HeaderFrame(ctk.CTkFrame):
         button.pack(padx=0, pady=0)
         label.pack(padx=0, pady=0)
         return frame
-    
-    # def refresh_data(self):
-    #     # Lấy thông tin hệ thống
-    #     tasks = getTasks()  # Hàm lấy danh sách tasks
-    #     users = getUsers()  # Hàm lấy danh sách users
-
-    #     # Cập nhật thông tin tasks
-    #     if tasks:
-    #         done_tasks = [task for task in tasks if task["status"] == "COMPLETED"]
-    #         doing_tasks = [task for task in tasks if task["status"] == "IN_PROGRESS"]
-    #         todo_tasks = [task for task in tasks if task["status"] == "TODO"]
-    #         self.tasks_card.done_label.configure(text=f"Done: {done_tasks}")
-    #         self.tasks_card.doing_label.configure(text=f"Doing: {doing_tasks}")
-    #         self.tasks_card.todo_label.configure(text=f"Todo: {todo_tasks}")
-
-    #     # Cập nhật thông tin users
-    #     if users:
-    #         total_users = len(users)
-    #         # online_users = sum(1 for user in users if user.get("is_online"))
-    #         # offline_users = total_users - online_users
-
-    #         self.users_statisCard.user_quantity.configure(text=f"Total: {total_users}")
-    #         # self.users_statisCard.online.configure(text=f"Online: {online_users}")
-    #         # self.users_statisCard.offline.configure(text=f"Offline: {offline_users}")
-
 
 
 class SiderFrame(ctk.CTkFrame):
@@ -179,8 +144,12 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         self.frame = self.dashFrame(self)
         self.frame.pack(fill='both')
         # Tạo và bắt đầu luồng cập nhật request rate mỗi giây
-        self.update_thread = threading.Thread(target=self.update_request_rate, daemon=True)
-        self.update_thread.start()
+        self.threads = []
+        self.threads.append(threading.Thread(target=self.update_request_rate, daemon=True))
+        self.threads.append(threading.Thread(target=update_system_info, args=(self,), daemon=True))
+        # self.threads.append(threading.Thread(target=self.update_data, daemon=True))
+        for thread in self.threads:
+            thread.start()
 
     def update_request_rate(self):
         """Cập nhật tỷ lệ request mỗi giây"""
@@ -192,7 +161,8 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
                 hosts = get_all_host()  # Hàm này giả định trả về danh sách hosts
 
                 # Tính toán tỷ lệ mới
-                success_rate, fail_rate = self.calculate_overall_success_rate(hosts)
+                success_rate, fail_rate = self.calculate_overall_success_rate(
+                    hosts)
 
                 # Cập nhật giao diện Success Request
                 self.success_rate.winfo_children()[0].configure(
@@ -208,6 +178,7 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             except Exception as e:
                 print(f"Error during refresh: {e}")
 
+
     def dashFrame(self, master):
         frame = ctk.CTkFrame(master, fg_color='transparent')
         # System information
@@ -217,9 +188,13 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         system_info = get_system_info()  # API call hoặc hàm hệ thống
         user_quantity = getUsers()
         task_quantity = getTasks()
-        done_tasks = [task for task in task_quantity if task["status"] == "COMPLETED"]
-        doing_tasks = [task for task in task_quantity if task["status"] == "IN_PROGRESS"]
-        todo_tasks = [task for task in task_quantity if task["status"] == "TODO"]
+
+        task_quantity_list = task_quantity.get("Tasks list", [])  # Sử dụng key phù hợp
+        # task_quantity_list = task_quantity  # Sử dụng key phù hợp
+
+        done_tasks = [task for task in task_quantity_list if task["status"] == "COMPLETED"]
+        doing_tasks = [task for task in task_quantity_list if task["status"] == "IN_PROGRESS"]
+        todo_tasks = [task for task in task_quantity_list if task["status"] == "TODO"]
 
         # Lấy số lg ng dùng on, off
         online_users = sum(1 for user in user_quantity if user.get("isOnline"))
@@ -235,16 +210,14 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             # CPU
 
             self.cpu_card = self.sys_card(sys_info_row1, "#76CF8C", "server/icons/CPU.png",
-                                     "CPU", usage=system_info["cpu_usage"], used=None, total=None)
+                                          "CPU", usage=system_info["cpu_usage"], used=None, total=None)
             self.cpu_card.pack(fill='x', expand=False, side=ctk.LEFT)
 
             # RAM
             self.ram_card = self.sys_card(sys_info_row1, "#CFCC76", "server/icons/RAM.png", "RAM",
-                                    usage=system_info["memory_usage_percent"], used=system_info["used_memory"],
-                                    total=system_info["total_memory"])
+                                          usage=system_info["memory_usage_percent"], used=system_info["used_memory"],
+                                          total=system_info["total_memory"])
             self.ram_card.pack(expand=True, anchor=ctk.E)
-            
-
 
             # Frame chứa DISK và STATUS
             sys_info_row2 = ctk.CTkFrame(frame, fg_color='transparent')
@@ -252,15 +225,15 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             # DISK
             self.disk_card = self.sys_card(
                 sys_info_row2, "#CF7676", "server/icons/DISK.png",
-                "DISK", usage=system_info["disk_usage_percent"], 
-                used=system_info["used_disk"], 
+                "DISK", usage=system_info["disk_usage_percent"],
+                used=system_info["used_disk"],
                 total=system_info["total_disk"]
             )
             self.disk_card.pack(fill='x', expand=False, side=ctk.LEFT)
 
             # STATUS
             self.status_card = self.sys_card(
-                sys_info_row2, "#A776CF", "server/icons/STATUS.png", 
+                sys_info_row2, "#A776CF", "server/icons/STATUS.png",
                 "STATUS", usage=None, used=None, total=None)
             self.status_card.pack(expand=True, anchor=ctk.E)
 
@@ -270,13 +243,14 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
 
         if user_quantity:
             total_users = len(user_quantity)
-            total_tasks = len(task_quantity)
+            total_tasks = len(task_quantity_list)
             _done = len(done_tasks)
             _doing = len(doing_tasks)
             _todo = len(todo_tasks)
 
             # Statistical Information
-            statis_info_title = self.titleLabel(frame, "Statistical Information")
+            statis_info_title = self.titleLabel(
+                frame, "Statistical Information")
             statis_info_title.pack(fill='both', padx=20, pady=10)
 
             # Statis frame
@@ -284,19 +258,24 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             statis_frame.pack(fill='x')
 
             # users_statisCard
-            self.users_statisCard = self.users_card(statis_frame, total_users, online_users, offline_users)
-            self.users_statisCard.pack(fill='x', padx=(100,50), pady=10, side=ctk.LEFT, expand=True, anchor=ctk.N)
+            self.users_statisCard = self.users_card(
+                statis_frame, total_users, online_users, offline_users)
+            self.users_statisCard.pack(fill='x', padx=(
+                100, 50), pady=10, side=ctk.LEFT, expand=True, anchor=ctk.N)
 
             # tasks_statisCard
-            self.task_statisCard = self.tasks_card(statis_frame, total_tasks, _done, _doing, _todo)
-            self.task_statisCard.pack(fill='x', padx=(50,100), pady=10, side=ctk.RIGHT, expand=True, anchor=ctk.N)
+            self.task_statisCard = self.tasks_card(
+                statis_frame, total_tasks, _done, _doing, _todo)
+            self.task_statisCard.pack(fill='x', padx=(
+                50, 100), pady=10, side=ctk.RIGHT, expand=True, anchor=ctk.N)
 
         # Lấy tất cả client_ip
         hosts = get_all_host()
         if not hosts:
             print("Không có dữ liệu để hiển thị.")
             # Hiển thị thông báo lỗi lên frame để không bị trả về None
-            error_label = ctk.CTkLabel(frame, text="Không có dữ liệu để hiển thị.", text_color="red", font=("Arial", 18))
+            error_label = ctk.CTkLabel(
+                frame, text="Không có dữ liệu để hiển thị.", text_color="red", font=("Arial", 18))
             error_label.pack(pady=20)
             return frame  # Trả về frame rỗng để tránh lỗi
 
@@ -306,11 +285,13 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         # request rate
         request_frame = ctk.CTkFrame(frame, fg_color='transparent')
         request_frame.pack(fill='x', padx=150)
-        self.success_rate = self.request_rate(request_frame, "#6DFF9B", "Success Request", "server/icons/success.png", round(success_rate, 2))
+        self.success_rate = self.request_rate(
+            request_frame, "#6DFF9B", "Success Request", "server/icons/success.png", round(success_rate, 2))
         self.success_rate.pack(side=ctk.LEFT,  expand=False)
-        
-        self.fail_rate = self.request_rate(request_frame, "#FF6D6D", "Fail Request", "server/icons/fail.png", round(fail_rate, 2))
-        self.fail_rate.pack( anchor=ctk.E)
+
+        self.fail_rate = self.request_rate(
+            request_frame, "#FF6D6D", "Fail Request", "server/icons/fail.png", round(fail_rate, 2))
+        self.fail_rate.pack(anchor=ctk.E)
 
         # Bảng dữ liệu clients
         table_client_frame = self.create_client_table(frame)
@@ -320,29 +301,57 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
 
 
 # ============= system infomation =========================
-    def update_dashboard(self, system_info):
+    def update_dashboard(self, system_info, user_quantity, task_quantity):
         # Cập nhật các giá trị CPU, RAM, DISK
-        global cpu_card, ram_card, disk_card
+        global cpu_card, ram_card, disk_card, users_statisCard, task_statisCard
 
-            # Cập nhật CPU
-        self.cpu_card.usage_label.configure(text=f"{system_info['cpu_usage']} %")
-        self.cpu_card.monitor["progress_var"].set(system_info["cpu_usage"] / 100)
+        # Cập nhật CPU
+        self.cpu_card.usage_label.configure(
+            text=f"{system_info['cpu_usage']} %")
+        self.cpu_card.monitor["progress_var"].set(
+            system_info["cpu_usage"] / 100)
 
         # Cập nhật RAM
-        self.ram_card.usage_label.configure(text=f"{system_info['memory_usage_percent']} %")
+        self.ram_card.usage_label.configure(
+            text=f"{system_info['memory_usage_percent']} %")
         if self.ram_card.used_label:
             self.ram_card.used_label.configure(
                 text=f"{system_info['used_memory']} GB / {system_info['total_memory']} GB"
             )
-        self.ram_card.monitor["progress_var"].set(system_info["memory_usage_percent"] / 100)
+        self.ram_card.monitor["progress_var"].set(
+            system_info["memory_usage_percent"] / 100)
 
         # Cập nhật DISK
-        self.disk_card.usage_label.configure(text=f"{system_info['disk_usage_percent']} %")
+        self.disk_card.usage_label.configure(
+            text=f"{system_info['disk_usage_percent']} %")
         if self.disk_card.used_label:
             self.disk_card.used_label.configure(
                 text=f"{system_info['used_disk']} GB / {system_info['total_disk']} GB"
             )
-        self.disk_card.monitor["progress_var"].set(system_info["disk_usage_percent"] / 100)
+        self.disk_card.monitor["progress_var"].set(
+            system_info["disk_usage_percent"] / 100)
+        
+        # Cập nhật user quantity
+        online_users = sum(1 for user in user_quantity if user.get("isOnline"))
+        offline_users = len(user_quantity) - online_users
+        self.users_statisCard.total_users.configure(
+            text=f"Online: {online_users}, Offline: {offline_users}"
+        )
+
+        # Cập nhật task quantity
+        task_quantity_list = task_quantity.get("Tasks list", [])  # Sử dụng key phù hợp
+
+        done_tasks = [task for task in task_quantity_list if task["status"] == "COMPLETED"]
+        doing_tasks = [task for task in task_quantity_list if task["status"] == "IN_PROGRESS"]
+        todo_tasks = [task for task in task_quantity_list if task["status"] == "TODO"]
+        self.task_statisCard.total_tasks.configure(
+            text=f"Done: {len(done_tasks)} - Doing: {len(doing_tasks)} - Todo: {len(todo_tasks)}"
+        )
+        self.task_statisCard.header.title_label.configure(
+            text=f"Total Tasks: {len(task_quantity_list)}"
+        )
+
+        
 
     def create_monitor_frame(self, master, color, var):
         frame = ctk.CTkFrame(master, fg_color="transparent")
@@ -362,7 +371,7 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             "progress_var": progress_var,
             "progress_bar": progress_bar
         }
-    
+
     def titleLabel(self, master, content):
         frame = ctk.CTkFrame(master, fg_color="#6D96FF",
                              border_width=2, border_color='black', corner_radius=20)
@@ -373,27 +382,29 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
 
     def sys_card(self, master, color, img_src, title, usage, used, total):
         card = ctk.CTkFrame(master, fg_color=color, corner_radius=10)
-        
+
         # Left: Ảnh và tiêu đề
         left = ctk.CTkFrame(card, fg_color='transparent')
-        left.pack(side=ctk.LEFT, padx=(30,15), pady=10)
+        left.pack(side=ctk.LEFT, padx=(30, 15), pady=10)
         image_src = ctk.CTkImage(Image.open(img_src), size=(100, 100))
         image = ctk.CTkLabel(left, text='', image=image_src)
         image.pack(pady=10)
-        title_label = ctk.CTkLabel(left, text=title, font=("Arial", 22, "bold"), text_color='white')
+        title_label = ctk.CTkLabel(left, text=title, font=(
+            "Arial", 22, "bold"), text_color='white')
         title_label.pack()
 
         # Right: Usage và thanh tiến trình
         right = ctk.CTkFrame(card, fg_color='transparent')
         right.pack(side=ctk.RIGHT, padx=(15, 30), pady=5)
-        
 
         if (title != "STATUS"):
             if used is not None and total is not None:
-                used_label = ctk.CTkLabel(right, text=f"{used} GB / {total} GB", font=("Arial", 22, 'bold'), text_color='white')
+                used_label = ctk.CTkLabel(
+                    right, text=f"{used} GB / {total} GB", font=("Arial", 22, 'bold'), text_color='white')
                 used_label.pack(pady=10)
 
-            usage_label = ctk.CTkLabel(right,text=f"{usage} %", font=("Arial", 52, 'bold'), text_color='white')
+            usage_label = ctk.CTkLabel(right, text=f"{usage} %", font=(
+                "Arial", 52, 'bold'), text_color='white')
             usage_label.pack(pady=5)
             self.monitor = self.create_monitor_frame(right, color, usage)
             self.monitor["frame"].pack(pady=10)
@@ -407,23 +418,25 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
                 "Arial", 52, 'bold'), text_color='white', width=270)
             label.pack(pady=5)
         return card
-    
+
 # ============= Statistical Information =========================
     def statisCard(self, master, title):
         card = ctk.CTkFrame(master, fg_color="transparent")
         # Header
-        title_label = ctk.CTkLabel(card, text=title, font=("Aria", 25), text_color='black')
+        title_label = ctk.CTkLabel(
+            card, text=title, font=("Aria", 25), text_color='black')
         title_label.pack(fill='x')
-        # image
-        # image_src = ctk.CTkImage(Image.open(image), size=(100, 100))
-        # image = ctk.CTkLabel(card, text='', image=image_src)
-        # image.pack(pady=10)
         
+        # lưu tham chiếu
+        card.title_label = title_label
+
         return card
-    
+
     def users_card(self, master, quantity, online, offline):
-        frame = ctk.CTkFrame(master, fg_color='#C3C7F4', corner_radius=10, width=170, height=100)
-        frame.pack_propagate(False)  # Ngăn frame tự động điều chỉnh kích thước theo nội dung
+        frame = ctk.CTkFrame(master, fg_color='#C3C7F4',
+                             corner_radius=10, width=170, height=100)
+        # Ngăn frame tự động điều chỉnh kích thước theo nội dung
+        frame.pack_propagate(False)
 
         # Header
         header = self.statisCard(frame, f"Total Users: {quantity}")
@@ -436,29 +449,19 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         total_users_frame = ctk.CTkFrame(frame, fg_color='transparent')
         total_users_frame.pack(fill='x', pady=5)
         # online quantity
-        self.total_users = ctk.CTkLabel(total_users_frame, text=f"Online: {online}, Offline: {offline}", font=("Aria", 20), text_color='black', justify='center', anchor='center')
-        self.total_users.pack(side=ctk.TOP, expand=True)
-        # online image
-        # online_src = ctk.CTkImage(Image.open("server/icons/online.png"), size=(50, 50))
-        # self.online_img = ctk.CTkLabel(online_frame, text='', image=online_src)
-        # self.online_img.pack(side=ctk.LEFT, expand=False, padx=(10, 70))
+        total_users = ctk.CTkLabel(total_users_frame, text=f"Online: {online}, Offline: {offline}", font=(
+            "Aria", 20), text_color='black', justify='center', anchor='center')
+        total_users.pack(side=ctk.TOP, expand=True)
+        # lưu tham chiếu
+        frame.total_users = total_users
 
-        # offline frame
-        # offline_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        # offline_frame.pack(fill='x', pady=10, padx=20)
-        # offline quantity
-        # self.offline = ctk.CTkLabel(offline_frame, text=f"Offline: {offline}", font=("Aria", 22), text_color='black')
-        # self.offline.pack(side=ctk.RIGHT, expand=True, anchor=ctk.W)
-        # # offline image
-        # offline_src = ctk.CTkImage(Image.open("server/icons/offline.png"), size=(50, 50))
-        # self.offline_img = ctk.CTkLabel(offline_frame, text='', image=offline_src)
-        # self.offline_img.pack(side=ctk.LEFT, expand=False, padx=(10, 70))
-        
         return frame
 
     def tasks_card(self, master, quantity, done, doing, todo):
-        frame = ctk.CTkFrame(master, fg_color='#C3C7F4', corner_radius=10, width=170, height=100)
-        frame.pack_propagate(False)  # Ngăn frame tự động điều chỉnh kích thước theo nội dung
+        frame = ctk.CTkFrame(master, fg_color='#C3C7F4',
+                             corner_radius=10, width=170, height=100)
+        # Ngăn frame tự động điều chỉnh kích thước theo nội dung
+        frame.pack_propagate(False)
         # Header
         header = self.statisCard(frame, f"Total Tasks: {quantity}")
         header.pack(fill='x', pady=10)
@@ -470,37 +473,15 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         total_tasks_frame = ctk.CTkFrame(frame, fg_color='transparent')
         total_tasks_frame.pack(fill='x', pady=5)
         # done quantity
-        self.total_tasks = ctk.CTkLabel(total_tasks_frame, text=f"Done: {done} - Doing: {doing} - Todo: {todo}", font=("Aria", 20), text_color='black', justify='center', anchor='center')
-        self.total_tasks.pack(side=ctk.TOP, expand=True)
-        # done image
-        # done_src = ctk.CTkImage(Image.open("server/icons/done.png"), size=(50, 50))
-        # self.done_img = ctk.CTkLabel(done_frame, text='', image=done_src)
-        # self.done_img.pack(side=ctk.LEFT, expand=False, padx=(10, 70))
+        total_tasks = ctk.CTkLabel(total_tasks_frame, text=f"Done: {done} - Doing: {doing} - Todo: {todo}", font=(
+            "Aria", 20), text_color='black', justify='center', anchor='center')
+        total_tasks.pack(side=ctk.TOP, expand=True)
 
-        # doing frame
-        # doing_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        # doing_frame.pack(fill='x', pady=10, padx=20)
-        # # doing quantity
-        # self.doing_label = ctk.CTkLabel(doing_frame, text=f"Doing: {doing}", font=("Aria", 22,), text_color='black')
-        # self.doing_label.pack(side=ctk.RIGHT, expand=True, anchor=ctk.W)
-        # # doing image
-        # doing_src = ctk.CTkImage(Image.open("server/icons/doing.png"), size=(50, 50))
-        # self.doing_img = ctk.CTkLabel(doing_frame, text='', image=doing_src)
-        # self.doing_img.pack(side=ctk.LEFT, expand=False, padx=(10, 70))
-
-        # # todo frame
-        # todo_frame = ctk.CTkFrame(frame, fg_color='transparent')
-        # todo_frame.pack(fill='x', pady=10, padx=20)
-        # # todo quantity
-        # self.todo_label = ctk.CTkLabel(todo_frame, text=f"Todo: {todo}", font=("Aria", 22,), text_color='black')
-        # self.todo_label.pack(side=ctk.RIGHT, expand=True, anchor=ctk.W)
-        # # todo image
-        # todo_src = ctk.CTkImage(Image.open("server/icons/todo.png"), size=(50, 50))
-        # self.todo_img = ctk.CTkLabel(todo_frame, text='', image=todo_src)
-        # self.todo_img.pack(side=ctk.LEFT, expand=False, padx=(10, 70))
-        
+        # lưu tham chiếu
+        frame.total_tasks = total_tasks
+        frame.header = header
         return frame
-    
+
     def create_client_table(self, master):
         # Khung chứa bảng
         frame = ctk.CTkFrame(master, fg_color="white", corner_radius=10)
@@ -522,7 +503,8 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
 
         # Cột của bảng
         columns = ("ID", "Host", "Number of Requests", "Date")
-        self.tree = ttk.Treeview(frame, columns=columns, show="headings", style="Treeview")
+        self.tree = ttk.Treeview(
+            frame, columns=columns, show="headings", style="Treeview")
 
         # Định nghĩa tiêu đề và kích thước cột
         for col in columns:
@@ -530,17 +512,21 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
             self.tree.column(col, width=150, anchor="center")
 
         # Thêm dữ liệu mẫu
-        data = get_all_host()
-        
-        for row in data:
-            self.tree.insert("", "end", values=row)
+        sample_data = get_all_host()
+
+        for data in sample_data:
+            self.tree.insert("", "end", values=(
+                data['id'], data['client_ip'], data['success'] + data['fail'],
+                data['created_at']
+            ))
 
         # Tính toán số lượng dòng data
         rows = len(data)
-        self.tree.config(height=min(rows, 10)) # Chỉ hiển thị tối đa 10 dòng
+        self.tree.config(height=min(rows, 10))  # Chỉ hiển thị tối đa 10 dòng
 
         # Thanh cuộn dọc
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        scrollbar = ttk.Scrollbar(
+            frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
 
         # Đặt bảng và thanh cuộn
@@ -568,36 +554,58 @@ class Dashboard_Frame(ctk.CTkScrollableFrame):
         fail_rate = (total_fail / total_requests) * 100
         return success_rate, fail_rate
 
-
     def request_rate(self, master, color, title, img, rate):
-        frame = ctk.CTkFrame(master, fg_color=color, corner_radius=10, width=320, height=160)
-        frame.pack_propagate(False)  # Ngăn frame tự điều chỉnh kích thước theo nội dung
-        
-        # title
-        title_label = ctk.CTkLabel(frame, text=f"{title}: {rate}%", text_color='black', font=("Aria", 25))
-        title_label.pack(fill='x' ,padx=5, pady=10)
+        frame = ctk.CTkFrame(master, fg_color=color,
+                             corner_radius=10, width=320, height=160)
+        # Ngăn frame tự điều chỉnh kích thước theo nội dung
+        frame.pack_propagate(False)
 
-        # image 
-        rate_src = ctk.CTkImage(Image.open(img), size=(85,85))
+        # title
+        title_label = ctk.CTkLabel(
+            frame, text=f"{title}: {rate}%", text_color='black', font=("Aria", 25))
+        title_label.pack(fill='x', padx=5, pady=10)
+
+        # image
+        rate_src = ctk.CTkImage(Image.open(img), size=(85, 85))
         self.rate_img = ctk.CTkLabel(frame, text='', image=rate_src)
         self.rate_img.pack(padx=5)
 
         return frame
-    
+
 
 # ============= system info =========================
+# Hàm lấy thông tin hệ thống
+def get_system_info():
+    cpu_usage = psutil.cpu_percent(interval=1)
+    memory_info = psutil.virtual_memory()
+    total_memory = round(memory_info.total / (1024 ** 3), 2)  # GB
+    used_memory = round(memory_info.used / (1024 ** 3), 2)    # GB
+    memory_usage_percent = memory_info.percent
+
+    disk_info = psutil.disk_usage('/')
+    total_disk = round(disk_info.total / (1024 ** 3), 2)      # GB
+    used_disk = round(disk_info.used / (1024 ** 3), 2)        # GB
+    disk_usage_percent = disk_info.percent
+
+    return {
+        "cpu_usage": cpu_usage,
+        "total_memory": total_memory,
+        "used_memory": used_memory,
+        "memory_usage_percent": memory_usage_percent,
+        "total_disk": total_disk,
+        "used_disk": used_disk,
+        "disk_usage_percent": disk_usage_percent
+    }
+
 
 def update_system_info(dashboard_frame):
-    api_url = "https://flask-api-deploy-e1d2eecd08cb.herokuapp.com/system_info"  # URL API Flask
-
     while True:
-        response = requests.get(api_url)
-        response.raise_for_status()  # Kiểm tra lỗi HTTP
-        system_info = response.json()  # Parse JSON từ API
-        system_info = get_system_info()  # Lấy thông tin từ API hoặc hệ thống
-        if system_info:
-            dashboard_frame.update_dashboard(system_info)  # Cập nhật giao diện
-        time.sleep(0.)  # Dừng 1 giây trước khi cập nhật tiếp
+        info = get_system_info()
+        users = getUsers()
+        tasks = getTasks()
+        if info and users and tasks:
+            dashboard_frame.update_dashboard(info, users, tasks)  # Cập nhật giao diện
+            time.sleep(0.1)  # Dừng 0.1 giây trước khi cập nhật tiếp
 
 
 class Requests_Frame(ctk.CTkFrame):
@@ -679,6 +687,12 @@ class Requests_Frame(ctk.CTkFrame):
             fg_color=fg_color, corner_radius=20, anchor=ctk.W, justify=ctk.LEFT
         )
         return self.label
+    
+    def get_server_ip(self):
+        hostname = socket.gethostname() 
+        server_ip = socket.gethostbyname(hostname)
+        return server_ip
+
 
     # Hàm cập nhật log
     def update_logs(self, filtered_logs=None, log_list=None, api_url=None):
@@ -692,6 +706,7 @@ class Requests_Frame(ctk.CTkFrame):
 
         # Lấy danh sách log cần hiển thị
         logs_to_display = filtered_logs if filtered_logs else log_list
+        server_ip = self.get_server_ip()
 
         # Duyệt qua từng log và tạo request item cho mỗi log
         for log in logs_to_display:
@@ -702,9 +717,9 @@ class Requests_Frame(ctk.CTkFrame):
                 method = parts[1]
                 path = parts[2]
                 status = parts[3]
-                server_ip = parts[4]
+                host = parts[4]
                 client_ip = parts[5]
-                content = f"[{times}]\n\nMethod: {method}\nPath: {path}\nServer IP: {server_ip}\nClient IP: {client_ip}\nStatus: {status}"
+                content = f"[{times}]\n\nMethod: {method}\nHost: {host}\nPath: {path}\nServer IP: {server_ip}\nClient IP: {client_ip}\nStatus: {status}"
                 color = "#79FDA5" if method == "GET" else "#79E2FD" if method == "POST" else "#FD797B" if method == "DELETE" else "#FDEF79"
                 request_item = self.request_item(
                     master=self.log_display,
@@ -724,7 +739,6 @@ class Requests_Frame(ctk.CTkFrame):
             return False
         else:
             return True
-
 
     def search_logs(self, log_list):
         # Lấy từ khóa từ ô tìm kiếm
@@ -750,14 +764,16 @@ class Requests_Frame(ctk.CTkFrame):
                     # Cập nhật logs trên giao diện
                     self.update_logs(filtered_logs=logs)
                 else:
-                    messagebox.showinfo("No Results", "No logs found for the given keyword.")
+                    messagebox.showinfo(
+                        "No Results", "No logs found for the given keyword.")
             elif response.status_code == 404:
-                messagebox.showinfo("No Results", "No logs found for the given keyword.")
+                messagebox.showinfo(
+                    "No Results", "No logs found for the given keyword.")
             else:
-                messagebox.showerror("Error", f"Error {response.status_code}: {response.json().get('message', 'Unknown error')}")
+                messagebox.showerror(
+                    "Error", f"Error {response.status_code}: {response.json().get('message', 'Unknown error')}")
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
-
 
     def fetch_logs_from_api(self, api_url):
         """Gọi API để lấy danh sách log từ server"""
@@ -769,6 +785,7 @@ class Requests_Frame(ctk.CTkFrame):
         except requests.exceptions.RequestException as e:
             print(f"Error fetching logs: {e}")
             return []
+
 
 class Users_Frame(ctk.CTkFrame):
     def __init__(self, master):
@@ -850,15 +867,15 @@ class Users_Frame(ctk.CTkFrame):
                                      data['username'], data['password']))
 
         # Tạo thanh cuộn dọc (không tạo thanh cuộn ngang)
-        # vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-        # tree.configure(yscroll=vsb.set)
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
 
         # Đặt Treeview và thanh cuộn dọc vào frame
         self.tree.grid(row=0, column=0, sticky="nsew")
         # vsb.grid(row=0, column=1, sticky="ns")
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
-        self.auto_resize_columns()
+        # self.auto_resize_columns()
 
         return frame  # Trả về frame để tránh lỗi AttributeError
 
@@ -876,10 +893,11 @@ class Users_Frame(ctk.CTkFrame):
             self.tree.column(col, width=max_width * 10)
 
 
-
 server_ui = App(log_list=log_list)
-dashboard_frame = server_ui.body.frames["dashboard"]  # Truy cập Dashboard_Frame từ App
-update_thread = threading.Thread(target=update_system_info, args=(dashboard_frame,))
-update_thread.daemon = True  # Đảm bảo thread dừng khi ứng dụng tắt
-update_thread.start()
+# Truy cập Dashboard_Frame từ App
+dashboard_frame = server_ui.body.frames["dashboard"]
+# update_thread = threading.Thread(
+#     target=update_system_info, args=(dashboard_frame,))
+# update_thread.daemon = True  # Đảm bảo thread dừng khi ứng dụng tắt
+# update_thread.start()
 server_ui.mainloop()

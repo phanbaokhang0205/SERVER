@@ -1,10 +1,11 @@
 import requests
 
 BASE_URL = "https://flask-api-deploy-e1d2eecd08cb.herokuapp.com"
+# BASE_URL = "http://127.0.0.1:5000"
 # =================================Call api =================================
 # ======================= TASK =================================
 def getTasks():
-    base_url = f'{BASE_URL}/tasks'
+    base_url = f'{BASE_URL}'
     try:
         # Gửi yêu cầu GET đến API
         response = requests.get(base_url)
@@ -231,7 +232,7 @@ def getUsers():
     
 
 def addUser(fullname, age, gender, phone, address, email, username, password, avatar, create_at):
-    url = 'http://127.0.0.1:5000/users'
+    url = f'{BASE_URL}/users'
     payload = {
         "fullname": fullname,
         "age": age,
