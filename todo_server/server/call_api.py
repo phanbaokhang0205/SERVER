@@ -273,6 +273,19 @@ def update_user_status(user_id, is_online):
         print(f"Lỗi khi gọi API: {e}")
         return False
 
+def update_user_active(user_id, is_active):
+    url = f"{BASE_URL}/users/{user_id}/active"
+    try:
+        response = requests.put(url, json={'isActive': is_active})
+        if response.status_code == 200:
+            return True  # Thành công
+        else:
+            print(f"Không thể cập nhật trạng thái active: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"Lỗi khi gọi API: {e}")
+        return False
+
 # ======================= System Info =================================
 def get_system_info():
     base_url = f'{BASE_URL}/system_info'

@@ -793,6 +793,9 @@ class Users_Frame(ctk.CTkFrame):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=10)
+        self.data_label = None  # Định nghĩa biến data_label
+        self.selected_id = None  # Lưu ID người dùng được chọn
+
         self.content = self.user_table(self)
         self.search = self.search_user(self)
         self.search.grid(row=0, column=0, sticky=ctk.NSEW, padx=10)
@@ -814,13 +817,16 @@ class Users_Frame(ctk.CTkFrame):
         search_button = ctk.CTkButton(frame, text="Search", width=100, text_color='black',
                                       fg_color='#79E2FD', height=35, image=search_img, compound=ctk.LEFT)
         search_button.pack(padx=5, side=ctk.LEFT, expand=False)
+        
+        # Nút active
+        active_img = ctk.CTkImage(Image.open(
+            'server/icons/active.png'), size=(20, 20))
+        active_button = ctk.CTkButton(frame, text="Active", width=100, text_color='black',
+                                      fg_color='#FD797B', height=35, image=active_img, compound=ctk.LEFT, command=self.confirm_active_action)
+        active_button.pack(padx=5, side=ctk.LEFT, expand=False)
 
-        del_img = ctk.CTkImage(Image.open(
-            'server/icons/delete.png'), size=(20, 20))
-        delete_button = ctk.CTkButton(frame, text="Delete", width=100, text_color='black',
-                                      fg_color='#FD797B', height=35, image=del_img, compound=ctk.LEFT)
-        delete_button.pack(padx=5, side=ctk.LEFT, expand=False)
-        # Nút xóa
+        self.data_label = ctk.CTkLabel(frame, text="Selected ID: ", text_color="black", font=("Arial", 14))
+        self.data_label.pack(pady=10)
         return frame
 
     def user_table(self, master):
@@ -848,7 +854,7 @@ class Users_Frame(ctk.CTkFrame):
 
         # Tạo Treeview
         columns = ("ID", "Fullname", "Age", "Gender", "Phone",
-                   "Address", "Email", "Username", "Password")
+                   "Address", "Email", "Username", "isActive")
         self.tree = ttk.Treeview(frame, columns=columns,
                                  show="headings", style="Treeview")
 
@@ -864,34 +870,63 @@ class Users_Frame(ctk.CTkFrame):
             self.tree.insert("", "end",
                              values=(data['id'], data['fullname'], data['age'],
                                      data['gender'], data['phone'], data['address'], data['email'],
-                                     data['username'], data['password']))
+                                     data['username'], data['isActive']))
 
         # Tạo thanh cuộn dọc (không tạo thanh cuộn ngang)
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscroll=vsb.set)
+
+        # Thêm sự kiện khi chọn hàng
+        self.tree.bind("<ButtonRelease-1>", self.on_row_select)
 
         # Đặt Treeview và thanh cuộn dọc vào frame
         self.tree.grid(row=0, column=0, sticky="nsew")
         # vsb.grid(row=0, column=1, sticky="ns")
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
-        # self.auto_resize_columns()
 
         return frame  # Trả về frame để tránh lỗi AttributeError
 
-    def auto_resize_columns(self):
-        # Duyệt qua từng cột trong Treeview
-        for col in self.tree["columns"]:
-            max_width = 0
-            # Tính độ rộng lớn nhất của nội dung trong mỗi hàng
-            for item in self.tree.get_children():
-                cell_value = str(self.tree.item(
-                    item)["values"][self.tree["columns"].index(col)])
-                max_width = max(max_width, len(cell_value))
+    # Hàm xử lý sự kiện khi chọn một hàng
+    def on_row_select(self, event):
+        """Lấy ID của hàng được chọn."""
+        selected_item = self.tree.selection()
+        if selected_item:
+            values = self.tree.item(selected_item, "values")
+            if values:
+                self.selected_id = values[0]  # Lưu ID được chọn
+                self.data_label.configure(text=f"Selected ID: {self.selected_id}")
 
-            # Đặt chiều rộng của cột bằng độ dài lớn nhất * hệ số pixel (7 hoặc 10)
-            self.tree.column(col, width=max_width * 10)
+    def confirm_active_action(self):
+        """Hiển thị hộp thoại xác nhận và thực hiện hành động Active."""
+        if self.selected_id is None:
+            messagebox.showerror("No Selection", "Please select a user first!")
+            return
 
+        answer = messagebox.askyesno(
+            title="Confirm Action",
+            message=f"Are you sure you want to change the active status for user ID {self.selected_id}?"
+        )
+
+        if answer:
+            is_successful = update_user_active(self.selected_id, is_active=True)  # Ví dụ: Cập nhật thành True
+            if is_successful:
+                messagebox.showinfo("Success", "User active status updated!")
+                self.refresh_treeview()  # Cập nhật lại TreeView
+            else:
+                messagebox.showerror("Error", "Failed to update user status!")
+
+    def refresh_treeview(self):
+        """Cập nhật lại dữ liệu trong TreeView."""
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        sample_data = getUsers()
+        for data in sample_data:
+            self.tree.insert("", "end", values=(data['id'], data['fullname'], data['age'],
+                                                data['gender'], data['phone'], data['address'], data['email'],
+                                                data['username'], data['isActive']))
+        
 
 server_ui = App(log_list=log_list)
 # Truy cập Dashboard_Frame từ App
