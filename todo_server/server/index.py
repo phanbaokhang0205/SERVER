@@ -8,8 +8,8 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 log_list = []
-# base_url = 'http://172.16.0.15:5001'
-base_url = 'https://flask-webserver-e07c23893a36.herokuapp.com'
+base_url = 'http://192.168.144.162:5001'
+# base_url = 'https://flask-webserver-e07c23893a36.herokuapp.com'
 
 
 def confirm_exit(app):
@@ -825,8 +825,6 @@ class Users_Frame(ctk.CTkFrame):
                                       fg_color='#FD797B', height=35, image=active_img, compound=ctk.LEFT, command=self.confirm_active_action)
         active_button.pack(padx=5, side=ctk.LEFT, expand=False)
 
-        self.data_label = ctk.CTkLabel(frame, text="Selected ID: ", text_color="black", font=("Arial", 14))
-        self.data_label.pack(pady=10)
         return frame
 
     def user_table(self, master):
@@ -895,7 +893,6 @@ class Users_Frame(ctk.CTkFrame):
             values = self.tree.item(selected_item, "values")
             if values:
                 self.selected_id = values[0]  # Lưu ID được chọn
-                self.data_label.configure(text=f"Selected ID: {self.selected_id}")
 
     def confirm_active_action(self):
         """Hiển thị hộp thoại xác nhận và thực hiện hành động Active."""
