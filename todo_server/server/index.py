@@ -8,8 +8,8 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 log_list = []
-base_url = 'http://192.168.144.162:5001'
-# base_url = 'https://flask-webserver-e07c23893a36.herokuapp.com'
+# base_url = 'http://192.168.144.162:5001'
+base_url = 'https://flask-webserver-e07c23893a36.herokuapp.com'
 
 
 def confirm_exit(app):
